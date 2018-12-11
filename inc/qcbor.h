@@ -91,17 +91,29 @@ IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  struct down so it can be on the stack without any concern.  It would be about
  double if size_t was used instead.
  
+ 2 bits for major type
+ 11 bits for array count --> 2000 entries in an array
+ 19 bits for length --> 512KB
+ 10 levels of nesting --> 44 bytes + 8 + pad = 56 on 64bit (48 bytes on 32-bit machine)
+ 15 levels --> 64 bytes + 8 ->72 on 64-bit machine; (68 bytes on 32-bit machine)
+ 
+ With larger
+ 10 levels of nesting ->88 bytes + 8  = 96 byte on 64-bit machine (92 bytes on 32-bit machine)
+ 15 levels of nesting -> 128 + 8 = 136 bytes
+ 
+ 
  64-bit machine: 10 * (4 + 2 + 1 + 1) + 8 = 88 bytes
  32-bit machine: 10 * (4 + 2 + 1 + 1) + 4 = 84 bytes
 */
 typedef struct __QCBORTrackNesting {
    // PRIVATE DATA STRUCTURE
    struct {
+      uint32_t uBits;
       // See function OpenArrayInternal() for detailed comments on how this works
-      uint32_t  uStart;     // uStart is the byte position where the array starts
-      uint16_t  uCount;     // Number of items in the arrary or map; counts items in a map, not pairs of items 
-      uint8_t   uMajorType; // Indicates if item is a map or an array
-   } pArrays[QCBOR_MAX_ARRAY_NESTING1+1], // stored state for the nesting levels
+    /*  uint16_t  uStart;     // uStart is the byte position where the array starts
+      uint8_t  uCount;     // Number of items in the arrary or map; counts items in a map, not pairs of items
+      uint8_t   uMajorType; // Indicates if item is a map or an array */
+   } pArrays[15+1], // stored state for the nesting levels
    *pCurrentNesting; // the current nesting level
 } QCBORTrackNesting;
 
@@ -114,6 +126,7 @@ typedef struct __QCBORTrackNesting {
  
  64-bit machine: 27 + 1 (+ 4 padding) + 88 = 32+88 = 120 bytes
  32-bit machine: 15 + 1 + 84 = 90 bytes
+ 
 */
 struct _QCBOREncodeContext {
    // PRIVATE DATA STRUCTURE
@@ -133,6 +146,9 @@ struct _QCBOREncodeContext {
  Size approximation (varies with CPU/compiler):
    64-bit machine: 4 * 10 + 8 + 4 padding =  56
    32-bit machine: 4 * 10 + 4 = 44
+ 
+   This could back down to 2 * 11 + 4 = 28 bytes on 32 bit machine
+   and 
  */
 typedef struct __QCBORDecodeNesting  {
   // PRIVATE DATA STRUCTURE

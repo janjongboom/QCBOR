@@ -81,7 +81,10 @@ inline static void Nesting_Init(QCBORTrackNesting *pNesting)
    pNesting->pCurrentNesting = &pNesting->pArrays[0];
    // Implied CBOR array at the top nesting level. This is never returned,
    // but makes the item count work correctly.
-   pNesting->pCurrentNesting->uMajorType = CBOR_MAJOR_TYPE_ARRAY;
+   //pNesting->pCurrentNesting->uMajorType = CBOR_MAJOR_TYPE_ARRAY;
+   pNesting->pCurrentNesting->uBits = (pNesting->pCurrentNesting->uBits & 0x3fffffff) + ((CBOR_MAJOR_TYPE_ARRAY-4) << 30);
+   
+   //(pNesting->pCurrentNesting->uBits && 0xc0) >> 30 = CBOR_MAJOR_TYPE_ARRAY;
 }
 
 inline static QCBORError Nesting_Increase(QCBORTrackNesting *pNesting, uint8_t uMajorType, uint32_t uPos)
@@ -93,9 +96,10 @@ inline static QCBORError Nesting_Increase(QCBORTrackNesting *pNesting, uint8_t u
       nReturn = QCBOR_ERR_ARRAY_NESTING_TOO_DEEP;
    } else {
       pNesting->pCurrentNesting++;
-      pNesting->pCurrentNesting->uCount     = 0;
+      pNesting->pCurrentNesting->uBits = uPos + ((uMajorType-4) << 30);
+   /*   pNesting->pCurrentNesting->uCount     = 0;
       pNesting->pCurrentNesting->uStart     = uPos;
-      pNesting->pCurrentNesting->uMajorType = uMajorType;
+      pNesting->pCurrentNesting->uMajorType = uMajorType;*/
    }
    return nReturn;
 }
@@ -107,12 +111,18 @@ inline static void Nesting_Decrease(QCBORTrackNesting *pNesting)
 
 inline static QCBORError Nesting_Increment(QCBORTrackNesting *pNesting, uint16_t uAmount)
 {
-   if(uAmount >= QCBOR_MAX_ITEMS_IN_ARRAY - pNesting->pCurrentNesting->uCount) {
+   if(uAmount >= QCBOR_MAX_ITEMS_IN_ARRAY - ((pNesting->pCurrentNesting->uBits & 0x3ff10000) >> 19)) {
       return QCBOR_ERR_ARRAY_TOO_LONG;
    }
-      
-   pNesting->pCurrentNesting->uCount += uAmount;
+   
+   pNesting->pCurrentNesting->uBits = (pNesting->pCurrentNesting->uBits & 0xc007ffff) + (uAmount << 19);
+   //pNesting->pCurrentNesting->uCount += uAmount;
    return QCBOR_SUCCESS;
+}
+
+inline static uint8_t Nesting_GetMajorType(QCBORTrackNesting *pNesting)
+{
+   return ((pNesting->pCurrentNesting->uBits & 0xc0000000) >> 30)+4;
 }
 
 inline static uint16_t Nesting_GetCount(QCBORTrackNesting *pNesting)
@@ -124,18 +134,15 @@ inline static uint16_t Nesting_GetCount(QCBORTrackNesting *pNesting)
    // items by two for maps to get the number of pairs.  This implementation
    // takes advantage of the map major type being one larger the array major
    // type, hence the subtraction returns either 1 or 2.
-   return pNesting->pCurrentNesting->uCount / (pNesting->pCurrentNesting->uMajorType - CBOR_MAJOR_TYPE_ARRAY+1);
+   return (pNesting->pCurrentNesting->uBits & 0x3ff) >> 19 / (Nesting_GetMajorType(pNesting) - CBOR_MAJOR_TYPE_ARRAY+1);
 }
 
 inline static uint32_t Nesting_GetStartPos(QCBORTrackNesting *pNesting)
 {
-   return pNesting->pCurrentNesting->uStart;
+   return pNesting->pCurrentNesting->uBits & 0x0007ffff;
 }
 
-inline static uint8_t Nesting_GetMajorType(QCBORTrackNesting *pNesting)
-{
-   return pNesting->pCurrentNesting->uMajorType;
-}
+
 
 inline static int Nesting_IsInNest(QCBORTrackNesting *pNesting)
 {
