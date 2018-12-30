@@ -110,14 +110,9 @@ inline static void Nesting_Decrease(QCBORTrackNesting *pNesting)
    pNesting->pCurrentNesting--;
 }
 
-inline static QCBORError Nesting_Increment(QCBORTrackNesting *pNesting)
+inline static void Nesting_Increment(QCBORTrackNesting *pNesting)
 {
-   if(1 >= QCBOR_MAX_ITEMS_IN_ARRAY - pNesting->pCurrentNesting->uCount) {
-      return QCBOR_ERR_ARRAY_TOO_LONG;
-   }
-      
-   pNesting->pCurrentNesting->uCount += 1;
-   return QCBOR_SUCCESS;
+   pNesting->pCurrentNesting->uCount++;
 }
 
 inline static uint16_t Nesting_GetCount(QCBORTrackNesting *pNesting)
@@ -195,9 +190,6 @@ inline static int Nesting_IsInNest(QCBORTrackNesting *pNesting)
    QCBOR_ERR_TOO_MANY_CLOSES -- more close calls than opens
    QCBOR_ERR_CLOSE_MISMATCH -- Type of close does not match open
    QCBOR_ERR_ARRAY_OR_MAP_STILL_OPEN -- Finish called without enough closes
- 
- Bad data
-   QCBOR_ERR_BAD_SIMPLE -- Simple value integer not valid
  
  */
 
@@ -368,10 +360,8 @@ inline static void AppendEncodedTypeAndNumber(QCBOREncodeContext *me, uint8_t uM
  */
 void QCBOREncode_AddUInt64(QCBOREncodeContext *me, uint64_t uValue)
 {
-   if(me->uError == QCBOR_SUCCESS) {
-      AppendEncodedTypeAndNumber(me, CBOR_MAJOR_TYPE_POSITIVE_INT, uValue);
-      me->uError = Nesting_Increment(&(me->nesting));
-   }
+   AppendEncodedTypeAndNumber(me, CBOR_MAJOR_TYPE_POSITIVE_INT, uValue);
+   Nesting_Increment(&(me->nesting));
 }
 
 
@@ -380,21 +370,19 @@ void QCBOREncode_AddUInt64(QCBOREncodeContext *me, uint64_t uValue)
  */
 void QCBOREncode_AddInt64(QCBOREncodeContext *me, int64_t nNum)
 {
-   if(me->uError == QCBOR_SUCCESS) {
-      uint8_t      uMajorType;
-      uint64_t     uValue;
-      
-      if(nNum < 0) {
-         uValue = (uint64_t)(-nNum - 1); // This is the way negative ints work in CBOR. -1 encodes as 0x00 with major type negative int.
-         uMajorType = CBOR_MAJOR_TYPE_NEGATIVE_INT;
-      } else {
-         uValue = (uint64_t)nNum;
-         uMajorType = CBOR_MAJOR_TYPE_POSITIVE_INT;
-      }
-      
-      AppendEncodedTypeAndNumber(me, uMajorType, uValue);
-      me->uError = Nesting_Increment(&(me->nesting));
+   uint8_t      uMajorType;
+   uint64_t     uValue;
+   
+   if(nNum < 0) {
+      uValue = (uint64_t)(-nNum - 1); // This is the way negative ints work in CBOR. -1 encodes as 0x00 with major type negative int.
+      uMajorType = CBOR_MAJOR_TYPE_NEGATIVE_INT;
+   } else {
+      uValue = (uint64_t)nNum;
+      uMajorType = CBOR_MAJOR_TYPE_POSITIVE_INT;
    }
+   
+   AppendEncodedTypeAndNumber(me, uMajorType, uValue);
+   Nesting_Increment(&(me->nesting));
 }
 
 
@@ -411,21 +399,16 @@ void QCBOREncode_AddInt64(QCBOREncodeContext *me, int64_t nNum)
  */
 void QCBOREncode_AddBuffer(QCBOREncodeContext *me, uint8_t uMajorType, UsefulBufC Bytes)
 {
-   if(!me->uError) {
-      // If it is not Raw CBOR, add the type and the length
-      if(uMajorType != CBOR_MAJOR_NONE_TYPE_RAW) {
-         AppendEncodedTypeAndNumber(me, uMajorType, Bytes.len);
-         // The increment in uPos is to account for bytes added for
-         // type and number so the buffer being added goes to the
-         // right place
-      }
-      
-      // Actually add the bytes
-      UsefulOutBuf_AppendUsefulBuf(&(me->OutBuf), Bytes);
-      
-      // Update the array counting if there is any nesting at all
-      me->uError = Nesting_Increment(&(me->nesting));
+   // If it is not Raw CBOR, add the type and the length
+   if(uMajorType != CBOR_MAJOR_NONE_TYPE_RAW) {
+      AppendEncodedTypeAndNumber(me, uMajorType, Bytes.len);
    }
+   
+   // Actually add the bytes
+   UsefulOutBuf_AppendUsefulBuf(&(me->OutBuf), Bytes);
+   
+   // Update the array counting
+   Nesting_Increment(&(me->nesting));
 }
 
 
@@ -448,19 +431,17 @@ void QCBOREncode_AddTag(QCBOREncodeContext *me, uint64_t uTag)
  */
 void QCBOREncode_AddType7(QCBOREncodeContext *me, size_t uSize, uint64_t uNum)
 {
-   if(me->uError == QCBOR_SUCCESS) {
-      // This function call takes care of endian swapping for the float / double
-      InsertEncodedTypeAndNumber(me,
-                                 CBOR_MAJOR_TYPE_SIMPLE,  // The major type for
-                                 // floats and doubles
-                                 (int)uSize,              // min size / tells
-                                 // encoder to do it right
-                                 uNum,                    // Bytes of the floating
-                                 // point number as a uint
-                                 UsefulOutBuf_GetEndPosition(&(me->OutBuf))); // end position for append
-      
-      me->uError = Nesting_Increment(&(me->nesting));
-   }
+   // This function call takes care of endian swapping for the float / double
+   InsertEncodedTypeAndNumber(me,
+                              CBOR_MAJOR_TYPE_SIMPLE,  // The major type for
+                              // floats and doubles
+                              (int)uSize,              // min size / tells
+                              // encoder to do it right
+                              uNum,                    // Bytes of the floating
+                              // point number as a uint
+                              UsefulOutBuf_GetEndPosition(&(me->OutBuf))); // end position for append
+   
+   Nesting_Increment(&(me->nesting));
 }
 
 
@@ -484,16 +465,14 @@ void QCBOREncode_AddDouble(QCBOREncodeContext *me, double dNum)
 void QCBOREncode_OpenMapOrArray(QCBOREncodeContext *me, uint8_t uMajorType)
 {
    // Add one item to the nesting level we are in for the new map or array
-   me->uError = Nesting_Increment(&(me->nesting));
-   if(!me->uError) {
-      size_t uEndPosition = UsefulOutBuf_GetEndPosition(&(me->OutBuf));
-      if(uEndPosition >= UINT32_MAX-sizeof(uint64_t)) {
-         me->uError = QCBOR_ERR_BUFFER_TOO_LARGE;
-      } else {
-         // Increase nesting level because this is a map or array
-         // Cast from size_t to uin32_t is safe because of check above
-         me->uError = Nesting_Increase(&(me->nesting), uMajorType, (uint32_t)uEndPosition);
-      }
+   Nesting_Increment(&(me->nesting));
+   size_t uEndPosition = UsefulOutBuf_GetEndPosition(&(me->OutBuf));
+   if(uEndPosition >= UINT32_MAX-sizeof(uint64_t)) {
+      me->uError = QCBOR_ERR_BUFFER_TOO_LARGE;
+   } else {
+      // Increase nesting level because this is a map or array
+      // Cast from size_t to uin32_t is safe because of check above
+      me->uError = Nesting_Increase(&(me->nesting), uMajorType, (uint32_t)uEndPosition);
    }
 }
 
