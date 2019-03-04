@@ -22,7 +22,7 @@
  @param[in] bNewline   If non-zero, output a newline after the string
 
  This is a prototype of a function to be passed to RunTests() to
- output text strings. 
+ output text strings.
 
  This can be implemented with stdio (if available) using a straight
  call to fputs() where the FILE * is passed as the pOutCtx as shown in
