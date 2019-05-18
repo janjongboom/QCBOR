@@ -568,6 +568,67 @@ void QCBOREncode_CloseMapOrArray(QCBOREncodeContext *me,
    }
 }
 
+//int GetHostEndianness() {return 0;} // TODO fill this in
+
+
+#define IS_BIG_ENDIAN (!*(unsigned char *)&(uint16_t){1})
+
+
+
+void QCBOREncode_AddUint32Array(QCBOREncodeContext *pMe, const uint32_t *pArray, size_t uArraySize, QCBOREndianness uRequestedEndianness)
+{
+   /* Figure out what endianness will actually be output based on the request, which could be for native endianness */
+   QCBOREndianness uOutputEndianness;
+   if(uRequestedEndianness == QCBOR_NATIVE_ENDIAN) {
+      uOutputEndianness = IS_BIG_ENDIAN ? QCBOR_BIG_ENDIAN : QCBOR_LITTLE_ENDIAN;
+   } else {
+      uOutputEndianness = uRequestedEndianness;
+   }
+   
+   /* Figure out endianness of CPU we are running on */
+   const QCBOREndianness uCPUEndianness = IS_BIG_ENDIAN ? QCBOR_BIG_ENDIAN : QCBOR_LITTLE_ENDIAN;
+   
+   QCBOREncode_AddTag(pMe, uOutputEndianness == QCBOR_BIG_ENDIAN ? 74 : 78);
+   
+   if(uCPUEndianness == uOutputEndianness) {
+      /* OUTPUTTING NATIVE ENDIANNESS */
+      // No swapping needed. The requested endianness is the same as the CPU's
+      const UsefulBufC BytesInArray = (UsefulBufC) {(const uint8_t *)pArray, uArraySize * sizeof(uint32_t)};
+      QCBOREncode_AddBytes(pMe, BytesInArray);
+
+   } else {
+      /* BYTE SWAPPING IS NEEDED */
+      QCBOREncode_AddBytesLenOnly(pMe, (UsefulBufC){NULL, uArraySize * sizeof(uint32_t)});
+      for(;uArraySize; uArraySize--, pArray++) {
+         if(uOutputEndianness == QCBOR_LITTLE_ENDIAN) {
+            /* OUTPUTTING LITTLE ENDIAN, CPU IS BIG */
+
+            /* The CPU is big endian, and little endian is requested */
+            /* No htonl or ntohl function will work here because they
+             all think that there is nothing to do because network
+             order is big endian. It seems likely that assembly will be
+             needed to make use of an instruction like Intel bswap */
+            /* On little endian machines, this code will never be used */
+            uint8_t tmp[4];
+            tmp[0] = (*pArray & 0xff000000) >> 24;
+            tmp[1] = (*pArray & 0xff0000) >> 16;
+            tmp[2] = (*pArray & 0xff00) >> 8;
+            tmp[3] = (*pArray & 0xff);
+            UsefulOutBuf_AppendData(&(pMe->OutBuf), &tmp, sizeof(tmp));
+         } else  {
+            /* OUTPUTTING BIG ENDIAN, CPU is LITTLE */
+
+            /* UsefulOutBuf_AppendUint32() can be used here because
+             this is the same as swapping to convert to
+             network byte order. UsefulOutBuf_AppendUint32()
+             may use htonl in some cases, making it more
+             efficient */
+            /* On big endian CPUs this code will never be used */
+            UsefulOutBuf_AppendUint32(&(pMe->OutBuf), *pArray);
+         }
+      }
+   }
+}
 
 
 

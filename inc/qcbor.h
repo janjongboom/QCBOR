@@ -761,6 +761,15 @@ typedef enum {
 } QCBORDecodeMode;
 
 
+/**
+ For QCBOREncode_AddInt32Array() and related.
+ */
+typedef enum {
+   QCBOR_LITTLE_ENDIAN = 0,
+   QCBOR_BIG_ENDIAN    = 1,
+   QCBOR_NATIVE_ENDIAN = 2
+} QCBOREndianness;
+   
 
 
 
@@ -1753,6 +1762,19 @@ static void QCBOREncode_AddEncodedToMap(QCBOREncodeContext *pCtx, const char *sz
 static void QCBOREncode_AddEncodedToMapN(QCBOREncodeContext *pCtx, int64_t nLabel, UsefulBufC Encoded);
 
 
+   
+/*
+ */
+void QCBOREncode_AddUint32Array(QCBOREncodeContext *pCtx, const uint32_t *pArray, size_t uArraySize, QCBOREndianness uEndianness);
+
+static void QCBOREncode_AddInt32Array(QCBOREncodeContext *pCtx, const int32_t *pArray, size_t uArraySize, QCBOREndianness uEndianness)
+{
+   // Cast from signed to unsigned is OK, because QCBOREncode_AddUint32Array() does no
+   /* math with the values. It just converts endianness as requested and outputs them */
+   QCBOREncode_AddUint32Array(pCtx, (const uint32_t *)pArray, uArraySize, uEndianness);
+}
+
+   
 /**
  @brief Get the encoded result.
 
